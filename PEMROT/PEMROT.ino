@@ -107,6 +107,7 @@ Serial.begin(250000); // Dynamixel communcition
  // Motor_PEM.setPWM(0);
   Motor_ROT.setPWM(0);
   
+  // Parameters PID controller
   PID_ROT.SetSampleTime(1);
   PID_ROT.SetOutputLimits(-PWM_MIN,PWM_MAX);
   PID_ROT.SetMode(AUTOMATIC);
