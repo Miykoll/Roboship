@@ -7,11 +7,11 @@
  
  Notes V1.3
  - Added PID contoller
- - Mechanical stop prevents the base to rotate more than 360 degrees
- - Another interrupt is implemented for the wall detection
+ - Mechanical stop prevents the base to rotate more than 360 degrees (NOT IMPLEMENTED)
+ - Another interrupt is implemented for the wall detection (NOT IMPLEMENTED)
  - The interrupt for the encoder is upgraded with an angle and revolutions counter.
  The ratio of the encoder is unknown but can be easily determined by a test of one 
- full revolution and counting the rising PCINT change
+ full revolution and counting the rising PCINT change (Ratio is 412 counts per 360 deg
 
 ---------------------------------------------------------------------------------
 /* Pin to interrupt map:
@@ -49,7 +49,7 @@ volatile long currentROTAngle;
 
 // PID parameters
  double Kp = 2.6;
- double Ki = 0;//2.02;
+ double Ki = 2.03;//2.02;
  double Kd = 0.73;
  int PWM_MIN = 200;
  int PWM_MAX = 200;
