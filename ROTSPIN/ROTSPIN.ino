@@ -24,6 +24,7 @@
 // **** Parameters ****
 unsigned long khztime;
 unsigned long hztime;
+unsigned long hztime2;
 byte dataValid = 0;
 
 long PWMvalue1, PWMvalue2;
@@ -62,10 +63,10 @@ DynamixelRAM DXL_ROT;
 char* DXL_ROT_ptr = (char*) &DXL_ROT;
 
 // Construct motors and sensors 
-motor Motor_SPIN = motor(8,9,A0,A2); // dir on 8, PWM on 9, current on A0, error on A2
-motor Motor_ROT = motor(7,10,A1,A3); // dir on 7, PWM on 10, current on A1, error on A3
-AS5055 Sensor1 = AS5055(ss2); // ss on pin 6
-AS5055 Sensor2 = AS5055(ss1); // ss on pin 5
+motor Motor_ROT = motor(8,9,A0,A2); // dir on 8, PWM on 9, current on A0, error on A2
+motor Motor_SPIN = motor(7,10,A1,A3); // dir on 7, PWM on 10, current on A1, error on A3
+AS5055 Sensor1 = AS5055(ss1); // ss on pin 6
+AS5055 Sensor2 = AS5055(ss2); // ss on pin 5
 
 // Construct PID controller
 PID PID_ROT(&PIDInput,&PIDOutput,&PIDSetpoint,Kp,Ki,Kd,REVERSE);
@@ -155,11 +156,11 @@ void loop()
   // Insert offset when calibrated
   newPos1 = Sensor1.getRawValue() - offsetPos1;
   if(newPos1<0){DXL_SPIN.presentPosition = (newPos1 + 4096) / 4;}
-  else{DXL_SPIN.presentPosition = ( (newPos1)%4098 )/4;}
+  else{DXL_SPIN.presentPosition = ( (newPos1)%4096 )/4;}
   
-  newPos2 = (Sensor2.getRawValue() - offsetPos2)/4;
+  newPos2 = Sensor2.getRawValue() - offsetPos2;
   if(newPos2<0){DXL_ROT.presentPosition = (newPos2 + 4096) / 4;}
-  else{DXL_ROT.presentPosition = ( (newPos2)%4098 )/4;}
+  else{DXL_ROT.presentPosition = ( (newPos2)%4096 )/4;}
   
   // Don't respond on value 0 and 1023, which happen often with bad connection
   if(DXL_SPIN.presentPosition == 0 || DXL_SPIN.presentPosition == 1023){DXL_SPIN.presentPosition = prevPos1;}
@@ -175,6 +176,7 @@ void loop()
   { // 500 Hz
     khztime = millis();
     hztime++;
+    hztime2++;
     if(hztime>49)    ///10Hz
     {
       /*
@@ -186,9 +188,9 @@ void loop()
        Serial.flush();
        digitalWrite(RS485sr, LOW);
        */
-      if(DXL_SPIN.LED || DXL_ROT.LED)
+      if(DXL_SPIN.LED)
       {
-        if( (abs(DXL_SPIN.presentPosition - prevPos1) < 5) || (abs(DXL_ROT.presentPosition - prevPos2) < 5){ // then top or bottom reached
+        if(abs(DXL_SPIN.presentPosition - prevPos1) < 5){ // then top or bottom reached
           calibrationFL = 1;  
         }
         else{
@@ -199,9 +201,23 @@ void loop()
         calibrationFL = 0;
       }
       
+      if(DXL_SPIN.LED || DXL_ROT.LED)
+      {
+        if(abs(DXL_ROT.presentPosition - prevPos2) < 5){ // then top or bottom reached
+          calibrationFL = 1;  
+        }
+        else{
+          calibrationFL = 0;
+        }
+      }
+      else{
+        calibrationFL = 0;
+      }
+      
+      
       if(DXL_SPIN.torqueEnable)
       {
-        if(abs(DXL_SPIN.presentPosition - prevPos1) < 5){ // then top or bottom reached
+        if(abs(DXL_SPIN.presentPosition - prevPos1) < 2){ // then top or bottom reached
           spindleFlag = 1;  
         }
         else{
@@ -217,6 +233,15 @@ void loop()
       nudgeTimeOut();
       toggle(LEDblue);
     } //10Hz
+    if(hztime2>99)    ///5Hz
+    {
+      
+      
+      
+      
+       hztime2=0;
+
+    }
 
   } // 500Hz
 
@@ -288,11 +313,11 @@ void loop()
 
   // Calibration or normal control mode motor 2 Rotation
   if (DXL_ROT.LED) { // Calibration mode
-    if (~(downFlag)){
-    PWMvalue2 = -175;
+   // if (~(downFlag)){
+    PWMvalue2 = -255;
     calibrateMotor_ROT(PWMvalue2,calibrationFL);
     revolutions2 = 10;
-    }
+   // }
   } 
   else { // Control mode
 
