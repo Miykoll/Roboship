@@ -36,6 +36,7 @@ boolean DEBUG = true;
 #define RS485sr 2
 #define hallOutA 11 // MOSI pin i.e. PCINT3
 #define hallOutB 12 // MISO pin i.e. PCINT4
+#define SS2 6 // For the wall sensor
 
 // **** Parameters ****
 volatile unsigned long lasttime, transitiontime;
@@ -90,6 +91,16 @@ void setup() {
 Serial.begin(250000); // Dynamixel communcition
 //Serial.begin(115200); // Serial communication 
 
+  // PEM pins
+  pinMode(3,OUTPUT);
+  pinMode(4,OUTPUT);
+  digitalWrite(3,HIGH);
+  digitalWrite(4,HIGH);
+  
+  // Wall sensor
+  pinMode(SS2,INPUT); // SS2 -> Wall sensor
+  digitalWrite(SS2,HIGH); //pull up
+
   wdt_enable(WDTO_500MS);
   TCCR1B = TCCR1B & 0b11111000 | 0x01;
 
@@ -127,6 +138,7 @@ Serial.begin(250000); // Dynamixel communcition
        DXL_ROT.complianceSlopeCW = 10*Kp +1;//P_P_GAIN
        DXL_ROT.complianceSlopeCCW = PWM_MIN; // PWM min    
        DXL_ROT.movingSpeed = PWM_MAX;   
+       
    /// DXL 2:
       //DXL_PEM.model=0x0140; // MX-106
        DXL_PEM.model=0x0040; //RX-64
@@ -140,18 +152,20 @@ Serial.begin(250000); // Dynamixel communcition
 // the loop routine runs over and over again forever:
 void loop() 
 {
-           uint8_t activePINS = 24;
+  uint8_t activePINS = 24;
 
   wdt_reset();
   DynamixelPoll();
   DXL_ROT.presentPosition = (currentROTAngle*1024)/360;// * (1024 / 360);
-DXL_ROT.presentSpeed = encodercount;
+  DXL_ROT.presentSpeed = encodercount;
+  
   if(millis()>khztime+1)
   { // 500 Hz
     khztime = millis();
     hztime++;
     if(hztime>49)    ///10Hz
     {
+      DXL_PEM.currentTorque = digitalRead(SS2); // if LOW then connected to the wall
       /* Calibration of the base rotation motor
         *  LED == 1, then calib mode. Calib mode is:
         *  rotate until mechanical block. If against mech block
@@ -197,42 +211,38 @@ DXL_ROT.presentSpeed = encodercount;
           Serial.print("\r\n");
           Serial.flush();
          digitalWrite(RS485sr, LOW);
-       }
        */
        
        // Control of the magnet PEM
-         switch(DXL_PEM.torqueEnable){											// PEM
-      	   case 0:
+         switch(DXL_PEM.movingSpeed)
+         {											// PEM
+      	   case 0: // Magnet normal
              {
-               digitalWrite(3,LOW);
-               digitalWrite(4,LOW);
+               digitalWrite(3,HIGH);
+               digitalWrite(4,HIGH);
                break;
              }
-             case 1:
+             case 1: // Magnet ON/OFF
              {
                digitalWrite(3,HIGH);
                digitalWrite(4,LOW);
+               DXL_PEM.movingSpeed = 11;
                break;
              }
-             case 2:
+             case 2: // Magnet ON/OFF
              {
                digitalWrite(3,LOW);
-               digitalWrite(4,HIGH);
+               digitalWrite(4,LOW);
+               DXL_PEM.movingSpeed = 21;
                break;
              }
              default:
              {
-              if(DEBUG){
-                digitalWrite(3,LOW);
-                digitalWrite(4,LOW);
-                break;
-              } else {
-               digitalWrite(3,HIGH);
-               digitalWrite(4,HIGH);
                break;
-              }
              }
-         }
+            
+        }
+     
        
      // check PID values and update if changed
      if((DXL_ROT.complianceMarginCW-1 != int(10*Kd)) || (DXL_ROT.complianceMarginCCW-1 != int(10*Ki )) || (DXL_ROT.complianceSlopeCW-1 != int(10*Kp )))
@@ -288,7 +298,7 @@ DXL_ROT.presentSpeed = encodercount;
         toggle(LEDblue);
     } //10Hz
 
- // } // 500Hz
+   } // 500Hz
    
   
 
@@ -301,7 +311,7 @@ DXL_ROT.presentSpeed = encodercount;
            } else {
            Motor_ROT.setPWM(0);
            }
-       }
+       
        /*
        if(DEBUG){
          if(boolINT){
@@ -332,7 +342,7 @@ DXL_ROT.presentSpeed = encodercount;
         }
         */
         
-}
+  }
 }
 
 
