@@ -52,8 +52,8 @@ volatile long currentROTAngle;
  double Kp = 2.6;
  double Ki = 2.03;//2.02;
  double Kd = 0.73;
- int PWM_MIN = 200;
- int PWM_MAX = 200;
+ int PWM_MIN = 255;
+ int PWM_MAX = 255;
  double PIDSetpoint, PIDInput, PIDOutput;
  volatile double ErrorPID;
 
@@ -72,10 +72,11 @@ volatile boolean boolFalling = false;
 
 // **** Constructors ****
 // Constructing Dynamixel
-DynamixelRAM DXL_ROT;
-char* DXL_ROT_ptr = (char*) &DXL_ROT;
 DynamixelRAM DXL_PEM;
 char* DXL_PEM_ptr = (char*) &DXL_PEM;
+DynamixelRAM DXL_ROT;
+char* DXL_ROT_ptr = (char*) &DXL_ROT;
+
 
 // Constructing motor and PEM
 //motor Motor_PEM = motor(8,9,A0,A2);  // PEM
@@ -91,13 +92,13 @@ void setup() {
 Serial.begin(250000); // Dynamixel communcition
 //Serial.begin(115200); // Serial communication 
 
-  // PEM pins
+  // PEM pins Enabling
   pinMode(3,OUTPUT);
   pinMode(4,OUTPUT);
   digitalWrite(3,HIGH);
   digitalWrite(4,HIGH);
   
-  // Wall sensor
+  // Wall sensor, pull-up sensor
   pinMode(SS2,INPUT); // SS2 -> Wall sensor
   digitalWrite(SS2,HIGH); //pull up
 
@@ -123,12 +124,19 @@ Serial.begin(250000); // Dynamixel communcition
   PID_ROT.SetOutputLimits(-PWM_MIN,PWM_MAX);
   PID_ROT.SetMode(AUTOMATIC);
 
-  
   /// DXL 1:
+     //DXL_PEM.model=0x0140; // MX-106
+      DXL_PEM.model=0x0040; //RX-64
+      DXL_PEM.version = 0x24; //??
+      DXL_PEM.ID = BOARD_ID_1;
+      DXL_PEM.baudrate = 7;
+      DXL_PEM.returnDelay = 10;  
+  
+  /// DXL 2: Rotation is always the second ID
       //DXL_ROT.model=0x0140; // MX-106
        DXL_ROT.model=0x0040; //RX-64
        DXL_ROT.version = 0x24; //??
-       DXL_ROT.ID = BOARD_ID_1;
+       DXL_ROT.ID = BOARD_ID_2;
        DXL_ROT.baudrate = 7;
        DXL_ROT.returnDelay = 10;
        DXL_ROT.angleLimitCCW = 1023;
@@ -139,24 +147,16 @@ Serial.begin(250000); // Dynamixel communcition
        DXL_ROT.complianceSlopeCCW = PWM_MIN; // PWM min    
        DXL_ROT.movingSpeed = PWM_MAX;   
        
-   /// DXL 2:
-      //DXL_PEM.model=0x0140; // MX-106
-       DXL_PEM.model=0x0040; //RX-64
-       DXL_PEM.version = 0x24; //??
-       DXL_PEM.ID = BOARD_ID_2;
-       DXL_PEM.baudrate = 7;
-       DXL_PEM.returnDelay = 10;  
-
 }
 
 // the loop routine runs over and over again forever:
 void loop() 
 {
-  uint8_t activePINS = 24;
+  uint8_t activePINS = 24; // debug
 
   wdt_reset();
   DynamixelPoll();
-  DXL_ROT.presentPosition = (currentROTAngle*1024)/360;// * (1024 / 360);
+  DXL_ROT.presentPosition = currentROTAngle;// * (1024 / 360);
   DXL_ROT.presentSpeed = encodercount;
   
   if(millis()>khztime+1)
@@ -165,7 +165,40 @@ void loop()
     hztime++;
     if(hztime>49)    ///10Hz
     {
+      //digitalWrite(LEDred,DXL_ROT.LED);
       DXL_PEM.currentTorque = digitalRead(SS2); // if LOW then connected to the wall
+      
+      // Control of the magnet PEM
+		switch(DXL_PEM.movingSpeed)
+		{											// PEM
+		   case 0: // Magnet normal
+			{
+			  digitalWrite(3,HIGH);
+			  digitalWrite(4,HIGH);
+			  break;
+			}
+			case 1: // Magnet ON/OFF
+			{
+			  digitalWrite(3,HIGH);
+			  digitalWrite(4,LOW);
+			  DXL_PEM.movingSpeed = 11;
+			  break;
+			}
+			case 2: // Magnet ON/OFF
+			{
+			  digitalWrite(3,LOW);
+			  digitalWrite(4,LOW);
+			  DXL_PEM.movingSpeed = 21;
+			  break;
+			}
+			default:
+			{
+			  break;
+			}
+		}
+
+      
+      
       /* Calibration of the base rotation motor
         *  LED == 1, then calib mode. Calib mode is:
         *  rotate until mechanical block. If against mech block
@@ -174,7 +207,8 @@ void loop()
         *  position not changing for 1/4 sec, then calibration 
         *  finished.
        */
-     /* if(DXL_ROT.LED) // Calibration mode
+		/*
+     if(DXL_ROT.LED) // Calibration mode with mechanical stop
       {
         DXL_ROT.torqueEnable = 0;
         if( (encodercount > (prevEncoderCount - rotMargin)) && (encodercount < (prevEncoderCount + rotMargin)) ) // This means the base is not rotating any more. Margin is for slightly changing encoder pulses
@@ -195,10 +229,15 @@ void loop()
         
       }
       */
+		
+		if(DXL_ROT.LED) // Calibration mode without mechnaical stop. User input required
+		{
+			Motor_ROT.setPWM(0);
+			encodercount = 0;
+			currentROTAngle = 0;
+            DXL_ROT.LED  = 0;
+		}
        
-       if(DEBUG){
-         if(DXL_ROT.torqueSetpoint == 1){encodercount = 0;DXL_ROT.torqueSetpoint =0;}
-       }
          /*
        // Counter interrupt serial print
          digitalWrite(RS485sr, HIGH);
@@ -213,35 +252,7 @@ void loop()
          digitalWrite(RS485sr, LOW);
        */
        
-       // Control of the magnet PEM
-         switch(DXL_PEM.movingSpeed)
-         {											// PEM
-      	   case 0: // Magnet normal
-             {
-               digitalWrite(3,HIGH);
-               digitalWrite(4,HIGH);
-               break;
-             }
-             case 1: // Magnet ON/OFF
-             {
-               digitalWrite(3,HIGH);
-               digitalWrite(4,LOW);
-               DXL_PEM.movingSpeed = 11;
-               break;
-             }
-             case 2: // Magnet ON/OFF
-             {
-               digitalWrite(3,LOW);
-               digitalWrite(4,LOW);
-               DXL_PEM.movingSpeed = 21;
-               break;
-             }
-             default:
-             {
-               break;
-             }
-            
-        }
+
      
        
      // check PID values and update if changed
@@ -251,44 +262,44 @@ void loop()
        Ki = double(DXL_ROT.complianceMarginCCW-1)/10;
        Kp = double(DXL_ROT.complianceSlopeCW-1)/10;
        PID_ROT.SetTunings(Kp/10,Ki,Kd);
-       digitalWrite(RS485sr, HIGH);
-          Serial.print("PID values updated:");
-          Serial.print("\r\n");
-          Serial.flush();
-         digitalWrite(RS485sr, LOW);   
+       
+       if(DEBUG){
+		   digitalWrite(RS485sr, HIGH);
+			  Serial.print("PID values updated:");
+			  Serial.print("\r\n");
+			  Serial.flush();
+			 digitalWrite(RS485sr, LOW);   
+       }
      }
+     // Update PWM limits via complianceSlopeCCW and movingSpeed
      if((DXL_ROT.complianceSlopeCCW != PWM_MIN) || (DXL_ROT.movingSpeed != PWM_MAX) )
      {
        PWM_MIN = DXL_ROT.complianceSlopeCCW;
        PWM_MAX = DXL_ROT.movingSpeed;
-      /*
        PID_ROT.SetOutputLimits(-PWM_MIN,PWM_MAX);
-              digitalWrite(RS485sr, HIGH);
-          Serial.print("PID values updated.");
-          Serial.print("\r\n");
-          Serial.flush();
-         digitalWrite(RS485sr, LOW);   
-         */
+       DXL_ROT.presentVoltage = PWM_MAX;
      }
      
      if(DXL_ROT.torqueEnable){
-        digitalWrite(RS485sr, HIGH);
-          Serial.print("PIDInput: ");
-          Serial.print(PIDInput);
-          Serial.print("; PIDSetpoint: ");
-          Serial.print(PIDSetpoint);
-          Serial.print("; PIDOutput: ");
-          Serial.print(PIDOutput);
-          Serial.print("\r\n");
-          Serial.print("Kp: ");
-          Serial.print(Kp);
-          Serial.print("; Ki: ");
-          Serial.print(Ki);
-          Serial.print("; Kd: ");
-          Serial.print(Kd);
-          Serial.print("\r\n");
-          Serial.flush();
-         digitalWrite(RS485sr, LOW);
+    	 if(DEBUG){
+			digitalWrite(RS485sr, HIGH);
+			  Serial.print("PIDInput: ");
+			  Serial.print(PIDInput);
+			  Serial.print("; PIDSetpoint: ");
+			  Serial.print(PIDSetpoint);
+			  Serial.print("; PIDOutput: ");
+			  Serial.print(PIDOutput);
+			  Serial.print("\r\n");
+			  Serial.print("Kp: ");
+			  Serial.print(Kp);
+			  Serial.print("; Ki: ");
+			  Serial.print(Ki);
+			  Serial.print("; Kd: ");
+			  Serial.print(Kd);
+			  Serial.print("\r\n");
+			  Serial.flush();
+			 digitalWrite(RS485sr, LOW);
+    	 }
      }
      
        
@@ -300,48 +311,13 @@ void loop()
 
    } // 500Hz
    
-  
-
-
+// Control of the rotation of the base
  if (1 == DXL_ROT.torqueEnable){
-           calculatePWMSetpoint(&PIDInput,&PIDSetpoint,DXL_ROT.goalPosition);
-           DXL_ROT.presentLoad=PIDOutput;
-           if(DXL_ROT.LED){
-           Motor_ROT.setPWM(PIDOutput);
-           } else {
-           Motor_ROT.setPWM(0);
-           }
-       
-       /*
-       if(DEBUG){
-         if(boolINT){
-         digitalWrite(RS485sr, HIGH);
-         Serial.print("PINB: ");
-         Serial.print(PINB);
-         Serial.print("; PINBactive: ");
-         Serial.print(PINB & activePINS);
-         // Serial.print("Pins(1,2): ");
-         // Serial.print(digitalRead(11));
-         // Serial.print(",");
-         // Serial.print(digitalRead(12));
-         // Serial.print("; Bool(1,2): ");
-         // Serial.print(boolRising);
-         // Serial.print(",");
-         // Serial.print(boolFalling);
-          Serial.print("; CCW(1): ");
-          Serial.print(drivingdirection);
-          Serial.print("; Count: ");
-          Serial.print(encodercount);
-          Serial.print("\r\n");
-          Serial.flush();
-         digitalWrite(RS485sr, LOW);
-         boolINT = false;
-         boolRising = false;
-         boolFalling = false;
-         }
-        }
-        */
-        
+   calculatePWMSetpoint(&PIDInput,&PIDSetpoint,DXL_ROT.goalPosition);
+   DXL_ROT.presentLoad = abs(PIDOutput);
+   Motor_ROT.setPWM(-PIDOutput); // Negative PWM value to turn right direction
+ } else {
+   Motor_ROT.setPWM(0);
   }
 }
 
@@ -406,6 +382,7 @@ void ProcessDynamixelData(const unsigned char ID, const int dataLength, const un
     break;
   }
 }
+
 void ReturnDynamixelData(const unsigned char ID, const int dataLength, const unsigned char* const Data){
   unsigned char buffer[DYNAMIXEL_RETURN_SIZE];
 ///  unsigned int checksum = 0;
@@ -450,14 +427,12 @@ void pciSetup(byte pin)
 // Interrupt routine which is called when interrupt occurs
 ISR (PCINT0_vect)
 {
+	// Parameters define
   boolean boolCCW = false;
   boolean boolCW = false;
   uint8_t changedbits;
   uint8_t activePINS = 24;
-
-  // debug trigger
-  if(DEBUG){boolINT = true;}
-  
+ 
   // Pattern CCW
   // 0 -> 01000 -> 11000 -> 10000 -> 0
   // 0 -> 8 -> 24 -> 16 -> 0
@@ -465,6 +440,10 @@ ISR (PCINT0_vect)
   // Pattern CW
   // 0 -> 10000 -> 11000 -> 01000 -> 0
   // 0 -> 16 -> 24 -> 8 -> 0
+  
+  // Check if one of the encoder pins is changed in value.
+  // If changed, check the previous value to determine if 
+  // the base is rotating CW or CCW.
   switch(PINB & activePINS){
     case 0:
     {
@@ -506,20 +485,21 @@ ISR (PCINT0_vect)
   }
   
   boolCCW = false;
-  boolCW = false;
+  boolCW  = false;
   
   encoderToAngle();
       
-    changedbits = PINB ^ portbhistory;
-    portbhistory = PINB & activePINS;
-    counterPCINT = changedbits; 
+  changedbits  = PINB ^ portbhistory;
+  portbhistory = PINB & activePINS;
+  counterPCINT = changedbits; 
 }
 
 
-// encoder count to angle in rad
+// Called in interrupt routine
+// Encoder count to angle in rad
 void encoderToAngle()
 {
-  currentROTAngle = encodercount * 360 / (2*51.45*4);
+  currentROTAngle = encodercount * 1024 / (2*51.45*4); // Pololu gear ratio = 51.45, Number of changes per revolution motor shaft = 4, Gear ratio with base = 2;
 }
 
 
@@ -535,7 +515,7 @@ int calculatePWMSetpoint(double* inputPID, double* setpointPID, int goalPos)
   }
   
    *setpointPID = double(goalPos);
-   *inputPID = (currentROTAngle*1023) / 360;
+   *inputPID = currentROTAngle;
    PID_ROT.Compute(); 
 }
 
