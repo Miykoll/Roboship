@@ -49,9 +49,9 @@ volatile long prevEncoderCount;
 volatile long currentROTAngle;
 
 // PID parameters
- double Kp = 2.6;
- double Ki = 2.03;//2.02;
- double Kd = 0.73;
+ double Kp = 2.5;
+ double Ki = 10.0;//2.02;
+ double Kd = 1.5;
  int PWM_MIN = 255;
  int PWM_MAX = 255;
  double PIDSetpoint, PIDInput, PIDOutput;
@@ -145,7 +145,8 @@ Serial.begin(250000); // Dynamixel communcition
        DXL_ROT.complianceMarginCCW = 10*Ki +1; // P_I_GAIN
        DXL_ROT.complianceSlopeCW = 10*Kp +1;//P_P_GAIN
        DXL_ROT.complianceSlopeCCW = PWM_MIN; // PWM min    
-       DXL_ROT.movingSpeed = PWM_MAX;   
+       DXL_ROT.movingSpeed = PWM_MAX; // PWM max
+       DXL_ROT.presentLoad = 0; // Current value  
        
 }
 
@@ -156,8 +157,9 @@ void loop()
 
   wdt_reset();
   DynamixelPoll();
-  DXL_ROT.presentPosition = currentROTAngle;// * (1024 / 360);
+  DXL_ROT.presentPosition = currentROTAngle; // * (1024 / 360);
   DXL_ROT.presentSpeed = encodercount;
+  DXL_ROT.presentLoad = int(Motor_ROT.getCurrent()); // get current the motor is using
   
   if(millis()>khztime+1)
   { // 500 Hz
@@ -277,7 +279,7 @@ void loop()
        PWM_MIN = DXL_ROT.complianceSlopeCCW;
        PWM_MAX = DXL_ROT.movingSpeed;
        PID_ROT.SetOutputLimits(-PWM_MIN,PWM_MAX);
-       DXL_ROT.presentVoltage = PWM_MAX;
+       DXL_ROT.currentAngleLoad = PWM_MAX;
      }
      
      if(DXL_ROT.torqueEnable){
@@ -314,7 +316,7 @@ void loop()
 // Control of the rotation of the base
  if (1 == DXL_ROT.torqueEnable){
    calculatePWMSetpoint(&PIDInput,&PIDSetpoint,DXL_ROT.goalPosition);
-   DXL_ROT.presentLoad = abs(PIDOutput);
+   DXL_ROT.presentVoltage = abs(PIDOutput);
    Motor_ROT.setPWM(-PIDOutput); // Negative PWM value to turn right direction
  } else {
    Motor_ROT.setPWM(0);
@@ -412,7 +414,9 @@ void ReturnDynamixelData(const unsigned char ID, const int dataLength, const uns
 }
 
 unsigned char dynamixelError(){
-  return 0;
+  unsigned char returnValue = 0;
+  if(Motor_ROT.getError()) returnValue |= (1<<5); // current overload if .getError() == 0
+  return returnValue;
 }
 
 
