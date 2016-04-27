@@ -19,7 +19,7 @@
 */
 
 
-boolean DEBUG = true;
+boolean DEBUG = false;
 
 //#include <SPI.h>
 #include "DynamixelReader.h"

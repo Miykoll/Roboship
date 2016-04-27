@@ -30,8 +30,9 @@ int AS5055::getRawValue(){
   data1 &=0b00111111;
   data1 = data1<<8;
   rawValue= (data1 | data2)>>2;
-  if(rawValue-offsetValue<0) return (rawValue-offsetValue+4096)%4096;
-  else return((rawValue-offsetValue)%4096);
+ //if(rawValue-offsetValue<0) return (rawValue-offsetValue+4096)%4096;
+  //else return((rawValue-offsetValue)%4096);
+  return(rawValue);
 }
 
 void AS5055::setOffset(int offset)
