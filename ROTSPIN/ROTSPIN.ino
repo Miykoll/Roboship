@@ -32,18 +32,18 @@ long PWMvalue1, PWMvalue2;
 const float pi = 3.14;
 
 bool calibrationBool1, calibrationBool2;
-int calibrationFL = 0;
+bool spindleCalibFlag = false;
 int spindleFlag   = 0;
 bool rotFlag = false;
-boolean downFlag;
+boolean upFlag;
 
 int load_t = 0;
 int maxCur2 = 0;
 
 // PID parameters Rot arm
- double Kp = 3;
+ double Kp = 5;
  double Ki = 2.0;//2.02;
- double Kd = 1;
+ double Kd = 0.01;
  int PWM_MIN = 255;
  int PWM_MAX = 255;
  double PIDSetpoint, PIDInput, PIDOutput;
@@ -110,7 +110,7 @@ void setup() {
   // Calibration
   calibrationBool1 = false;
   calibrationBool2 = false;
-  downFlag = false;
+  upFlag = true;
 
   TCCR1B = TCCR1B & 0b11111000 | 0x01;
 
@@ -125,7 +125,7 @@ void setup() {
     DXL_SPIN.model=0x0040; //RX-64
     DXL_SPIN.version = 0x24; //??
     DXL_SPIN.ID = BOARD_ID_1;
-    DXL_SPIN.baudrate = 7; // or 34
+    DXL_SPIN.baudrate = 34; // or 34
     DXL_SPIN.returnDelay = 10;
     DXL_SPIN.torqueEnable = 0;    // Torque enable dxl 1
     DXL_SPIN.goalPosition = 1000;//Sensor1.getRawValue();     // goalPosition dxl 1
@@ -139,10 +139,10 @@ void setup() {
     DXL_ROT.model=0x0040; //RX-64
     DXL_ROT.version = 0x24; //??
     DXL_ROT.ID = BOARD_ID_2;
-    DXL_ROT.baudrate = 7;// or 34
+    DXL_ROT.baudrate = 34;// or 34
     DXL_ROT.returnDelay = 10;
     DXL_ROT.torqueEnable  = 0;    // Torque enable dxl 1
-    DXL_ROT.goalPosition = 500; //Sensor2.getRawValue();// Sensor1.getRawValue();     // goalPosition dxl 1
+    DXL_ROT.goalPosition = 600; //Sensor2.getRawValue();// Sensor1.getRawValue();     // goalPosition dxl 1
     DXL_ROT.movingSpeed  = 0;     // goalPosition dxl 2
     DXL_ROT.angleLimitCW = 50; // Min angle possible
     DXL_ROT.angleLimitCCW = 870 + DXL_ROT.angleLimitCW; // Max angle possible
@@ -151,6 +151,7 @@ void setup() {
     DXL_ROT.complianceSlopeCW = 10*Kp +1;//P_P_GAIN
     DXL_ROT.complianceSlopeCCW = PWM_MIN; // PWM min    
     DXL_ROT.movingSpeed = PWM_MAX;   
+    DXL_ROT.bendControlMode = 9;
 
 }
 
@@ -172,9 +173,11 @@ void loop()
   // Don't respond on value 0 and 1023, which happen often with bad connection
   //if(DXL_SPIN.presentPosition == 0 || DXL_SPIN.presentPosition == 1023){DXL_SPIN.presentPosition = prevPos1;}
   //if(DXL_ROT.presentPosition == 0 || DXL_ROT.presentPosition == 1023){DXL_ROT.presentPosition = prevPos2;}
-  
-  if(curPos1 - prevPos1 > 900){revolutions1--;};
-  if(curPos1 - prevPos1 < -900){revolutions1++;};
+  if(~(spindleCalibFlag)){
+	  if(curPos1 - prevPos1 > 900){revolutions1--;};
+	  if(curPos1 - prevPos1 < -900){revolutions1++;};
+	  spindleCalibFlag = false;
+  }
   if(DXL_ROT.presentPosition - prevPos2 > 900){revolutions2--;};
   if(DXL_ROT.presentPosition - prevPos2 < -900){revolutions2++;};
   
@@ -190,56 +193,54 @@ void loop()
     {
     	counterSpindle++;
     	counterRot++;
-    	     if(spindleFlag == true && counterSpindle > 20) // two seconds
+    	     if( (spindleFlag == true && counterSpindle > 20) || (counterSpindle > 2 && spindleFlag == true && abs(curPos1 - prevPrevPos1) < 1) )// two seconds
     	     {
     	    	 Motor_SPIN.setPWM(0);
-    	    	 
-    	    	 DXL_SPIN.movingSpeed = 0;
     	    	 spindleFlag = false;
     	    	 
-    	    	 if(DXL_SPIN.LED == 11)
-    	    	 {
-					 DXL_SPIN.LED = 0;
-					 offsetPos1 = Sensor1.getRawValue() - 200; // 200/4 = 50
-				 }
-    	    	 
-    	     }
-    	     else if (counterSpindle > 2 && spindleFlag == true && abs(curPos1 - prevPrevPos1) < 1)
-    	     {
-    	         Motor_SPIN.setPWM(0);
-    	    	 
-    	    	 DXL_SPIN.movingSpeed = 33;
-    	    	 spindleFlag = false;
-    	    	 
-    	    	 if(DXL_SPIN.LED == 11)
-    	    	 {
-					 DXL_SPIN.LED = 0;
-					 offsetPos1 = Sensor1.getRawValue() - 200; // 200/4 = 50
-				 }
+    	    	 if(DXL_SPIN.movingSpeed == 11) // Spindle going up
+		{
+    	    	  if(DXL_SPIN.LED == 11)
+		  {
+		    offsetPos1 = Sensor1.getRawValue() - 200; // 200/4 = 50
+		    revolutions1 = 0;
+		    spindleCalibFlag = true;
+		  }
+                  delay(100); // wait 100 ms before going down again
+      	    	  DXL_SPIN.LED = 2;
+		}
+
+                if(DXL_SPIN.movingSpeed == 21)
+                {
+                  upFlag = false;
+                }
+    	    	     	    	 
+    	    	 // Incidate if spindle is stopped by counter or by no change in position
+    	    	 if(counterSpindle > 20)
+		{
+	    	 DXL_SPIN.movingSpeed = 0; // Counter stop
+		} else {
+		 DXL_SPIN.movingSpeed = 33; // No change in position stop
+		}
     	     }
     	     
-    	     if(rotFlag == true)
+    	     
+    	     if( (rotFlag == true && counterRot > 20) || (rotFlag == true && counterRot > 5 && abs(DXL_ROT.presentPosition - prevPrevPos2) < 2 ) )
     	     {
-                 DXL_ROT.presentSpeed = 1;
+                 DXL_ROT.presentSpeed = 2;
+                 Motor_ROT.setPWM(0);
+                 
     	    	 if(counterRot > 20)
     	    	 {
-					Motor_ROT.setPWM(0);
-					DXL_ROT.LED = 0;
-					offsetPos2 = Sensor2.getRawValue() - 200; // 200/4 = 50;
-					revolutions2 = 10;
-					rotFlag = false;
-                                        DXL_ROT.presentSpeed = 2;
+    	    		DXL_ROT.presentSpeed = 2;
+    	    	 } else {
+    	    		DXL_ROT.presentSpeed = 3;
     	    	 }
-    	    	 else if( counterRot > 5 && abs(DXL_ROT.presentPosition - prevPrevPos2) < 1 )
-				 {
- 					Motor_ROT.setPWM(0);
- 					DXL_ROT.LED = 33;
- 					offsetPos2 = Sensor2.getRawValue() - 200; // 200/4 = 50;
- 					revolutions2 = 10;
- 					rotFlag = false;
-                                        DXL_ROT.presentSpeed = 3;
-				 }
-			 }
+    	    	 DXL_ROT.LED = 0;
+		offsetPos2 = Sensor2.getRawValue() - 200; // 200/4 = 50;
+		rotFlag = false;
+    	     }
+    	    	 
     	     
      
     	
@@ -248,7 +249,7 @@ void loop()
      {
 		 case 0:
 		 {
-             Motor_SPIN.setPWM(0);
+                         Motor_SPIN.setPWM(0);
 			 break;
 		 }
 		 case 1: // Up motion
@@ -259,7 +260,7 @@ void loop()
 			 DXL_SPIN.LED = 11;
 			 counterSpindle = 0;
 			 spindleFlag = true;
-			 downFlag = false;
+			 upFlag = true;
 			 break;
 		 }
 		 case 2: // Down motion
@@ -269,7 +270,6 @@ void loop()
 			 DXL_SPIN.movingSpeed = 21;
 			 counterSpindle = 0;
 			 spindleFlag = true;
-			 downFlag = true;
 			 break;
 		 }
 		 default:
@@ -350,11 +350,11 @@ void loop()
 	  }
       else if  (DXL_SPIN.presentPosition < DXL_SPIN.goalPosition)
       {    
-    	Motor_SPIN.setPWM(255);  
+    	Motor_SPIN.setPWM(200);  
       }
 	  else 
 	  {    
-		Motor_SPIN.setPWM(-255); 
+		Motor_SPIN.setPWM(-200); 
 	  } 
       
       break;
@@ -373,47 +373,56 @@ void loop()
 
   ////// Rotation part
   // Calibration or normal control mode motor 2 Rotation
-  switch(DXL_ROT.LED) { // Calibration mode
-  case 1:
-	  {
-		  if (~(downFlag)){
-			counterRot = 0;
-			rotFlag = true;
-			Motor_ROT.setPWM(100);
-			DXL_ROT.LED = 11;
-		  } else {
-			DXL_ROT.LED = 0;
+  switch(DXL_ROT.LED) 
+  { // Calibration mode
+	  case 1:
+		  {
+			  DXL_ROT.torqueEnable = 0;
+			  if (upFlag){
+				counterRot = 0;
+				rotFlag = true;
+				Motor_ROT.setPWM(-255);
+				DXL_ROT.LED = 11;
+			  } else {
+				DXL_ROT.LED = 0;
+			  }
+			  break;
 		  }
+	  default:
+	  {
 		  break;
 	  }
-  default:
-  {
-	  break;
-  }
- }
-   
-	// Motor 2 - Rotation Motor
-	// The rotation motor has a decreasing encoder value from its 0 radius to 10 cm radius.
-	// The motor does not spin a full revolution.
-	// If the downFlag is triggerd, it means that a measurement is busy and no rotation may take place.
-	
-	if (1 == DXL_ROT.torqueEnable){
-	 if (~(downFlag)){
-	  if (!(DXL_ROT.presentPosition == 1023 || DXL_ROT.presentPosition ==0)){
-		calculatePWMSetpoint(&PIDInput,&PIDSetpoint,DXL_ROT.goalPosition);
-		DXL_ROT.presentVoltage = abs(PIDOutput); 
-		Motor_ROT.setPWM(-PIDOutput);
-	  } 
-	  else {
-		Motor_ROT.setPWM(0);
+	  case 0:
+	  {
+		// Motor 2 - Rotation Motor
+		// The rotation motor has a decreasing encoder value from its 0 radius to 10 cm radius.
+		// The motor does not spin a full revolution.
+		// If the upFlag is triggerd, it means that a measurement is busy and no rotation may take place.
+		if (1 == DXL_ROT.torqueEnable){
+		 if (upFlag){
+		  DXL_ROT.bendControlMode = 1;
+		  if (!(DXL_ROT.presentPosition == 1023 || DXL_ROT.presentPosition ==0)){
+			calculatePWMSetpoint(&PIDInput,&PIDSetpoint,DXL_ROT.goalPosition);
+			DXL_ROT.presentVoltage = abs(PIDOutput); 
+			Motor_ROT.setPWM(-PIDOutput);
+		  } 
+		  else {
+			DXL_ROT.bendControlMode = 2;  
+			Motor_ROT.setPWM(0);
+		  }
+		 }
+                 else {
+                	 DXL_ROT.bendControlMode = 3; 
+                   Motor_ROT.setPWM(0);
+                 }
+		} 
+		else {
+			DXL_ROT.bendControlMode = 4; 
+		  Motor_ROT.setPWM(0);
+		}
 	  }
-	 }
-	} 
-	else {
-	  Motor_ROT.setPWM(0);
-	}
- }
-
+  }
+}
 
 // Dynamixel obtain data
 void ProcessDynamixelData(const unsigned char ID, const int dataLength, const unsigned char* const Data){
@@ -516,7 +525,7 @@ unsigned char dynamixelError(){
   // if (!dataValid) returnvalue |= (1<<6); // Instruction Error
   if (Motor_ROT.getError()) returnvalue |= (1<<5); // current overload if .getError() == 0
   if (Motor_SPIN.getError()) returnvalue |= (1<<4); // current overload if .getError() == 0
-  if (downFlag) returnvalue |= (1<<0);
+  if (upFlag) returnvalue |= (1<<0);
   return returnvalue;
 }
 
@@ -536,90 +545,6 @@ int calculatePWMSetpoint(double* inputPID, double* setpointPID, int goalPos)
    *setpointPID = double(goalPos);
    *inputPID = DXL_ROT.presentPosition;
    PID_ROT.Compute(); 
-}
-
-int getPWM2Setpoint(int curAngle, int goalPos)
-{
-  // This function creates a setpoint based on two ramp functions. One ramp function is 
-  // active between 0 and dFlip and the other between dFlip and inf.
-  // The encoder goes from 0 till 1023, so 4095 / 4 (4095 = encoder resolution).
-  // If the setpoint is 
- 
-  // Parameters
-  long xDiff;
-  long xDiffAbs;
-  long y;
-  
-  int ymax = 225;
-  int ymin = 175;
-  int yminFlip = 100;
-
-  float dFlip = 75; 
-  float deadZone = 10; // 
-  float res = 1024; // resolution
-  float a1 = (ymax - ymin)/res;
-  float a2 = (ymin-yminFlip)/(dFlip-deadZone);
-  
-  // Look if set point is outside the angle limits of the arm
-  if(goalPos > DXL_ROT.angleLimitCCW){
-      goalPos = DXL_ROT.angleLimitCCW;
-  } else if(goalPos < DXL_ROT.angleLimitCW){
-    goalPos = DXL_ROT.angleLimitCW; 
-  }
-  
-  // Calculate the difference in bits between current Pos and goal Pos.
-  xDiff = curAngle - goalPos;
-  xDiffAbs = abs(xDiff);
- 
-  // If abs diff bigger then dFlip, then follow ramp function for PWM value
-  // Else if it is bigger then deadZone, but smaller then dFlip, then do ramp with greater slope
-  // Else the arm is near its goal pos, so PWM gets 0
-  if (xDiffAbs > dFlip)
-  {
-    y = a1 * xDiffAbs + ymin;
-  }
-  else if(xDiffAbs > deadZone)
-  {
-    y = a2*(xDiffAbs-deadZone) + yminFlip;
-  }
-  else
-  {
-    y = 0;
-  }
-
- // Negative PWM is rotation in CW direction
-  if (xDiff > 0)
-  {
-    y = -y;
-  }
-
-  return y;
-}
-
-
-
-void calibrateMotor_ROT(int setPWM,int flag){
-	// This function calibrates the rotation motor.
-	// The motor gets maximum PWM, which means it will rotate until it hits the body of the manipulator
-	// From there the current position of the arm will not change anymore
-	// This is checked on a certain Hz in the timer part at the top of this code.
-	// That part will trigger flag. If the flag is high, the position is not updating anymore
-	// 
-	// If end is reached, the motor pwm is set to 0 and the current position of the arm is changed.
-	// An offset is added to the AS5055 sensor, so that the arm will work between the given limits.
-	// The position of the arm is set initial to 50 instead of 0, to have some room to cope with noise and drift.
-	
-  int offsetValue;
-
-  if(flag){
-    Motor_ROT.setPWM(0);
-    delay(100);
-    offsetPos2 = Sensor2.getRawValue() - 200; // 200/4 = 50;
-    DXL_ROT.LED = 0;
-  } 
-  else {
-    Motor_ROT.setPWM(setPWM);
-  }  
 }
 
 

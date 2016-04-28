@@ -8,8 +8,8 @@
 #define DYNAMIXEL_BUFFER_SIZE (128) /* Just a lot so that it will not overflow */
 #define DYNAMIXEL_RETURN_SIZE 128 
 
-#define BOARD_ID_1 0x05
-#define BOARD_ID_2 0x06
+#define BOARD_ID_1 0x03
+#define BOARD_ID_2 0x04
 
 #define MEM_LENGTH 0x34
 

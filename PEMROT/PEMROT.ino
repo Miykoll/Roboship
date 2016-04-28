@@ -129,7 +129,7 @@ Serial.begin(250000); // Dynamixel communcition
       DXL_PEM.model=0x0040; //RX-64
       DXL_PEM.version = 0x24; //??
       DXL_PEM.ID = BOARD_ID_1;
-      DXL_PEM.baudrate = 7;
+      DXL_PEM.baudrate = 34;
       DXL_PEM.returnDelay = 10;  
   
   /// DXL 2: Rotation is always the second ID
@@ -137,7 +137,7 @@ Serial.begin(250000); // Dynamixel communcition
        DXL_ROT.model=0x0040; //RX-64
        DXL_ROT.version = 0x24; //??
        DXL_ROT.ID = BOARD_ID_2;
-       DXL_ROT.baudrate = 7;
+       DXL_ROT.baudrate = 34;
        DXL_ROT.returnDelay = 10;
        DXL_ROT.angleLimitCCW = 1023;
        DXL_ROT.angleLimitCW = 0;

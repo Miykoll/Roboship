@@ -8,8 +8,7 @@
 //#define BOARD_ID 0x01
 #define BOARD_ID_1 0x01
 #define BOARD_ID_2 0x02///
-#define BOARD_ID_3 0x03
-#define BOARD_ID_4 0x04
+
 #define MEM_LENGTH 0x34
 
 #define toggle(pin) digitalWrite(pin, !digitalRead(pin)) 
